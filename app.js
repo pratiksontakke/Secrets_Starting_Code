@@ -8,6 +8,7 @@ const session = require('express-session');
 const passport = require('passport');
 const passportLocalMongoose = require('passport-local-mongoose');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const FacebookStrategy = require('passport-facebook').Strategy;
 const findOrCreate = require('mongoose-findorcreate');
 
 const app = express();
@@ -26,6 +27,7 @@ app.use(session({
 }))
 app.use(passport.initialize());
 app.use(passport.session());
+
 //////////////////////////mongoose setup (Database name = userDB & Collection name = User)//////////////////////////////////////
 
 mongoose.connect('mongodb://localhost:27017/userDB', {
@@ -35,6 +37,7 @@ mongoose.connect('mongodb://localhost:27017/userDB', {
 mongoose.set('useCreateIndex', true);
 const userSchema = new mongoose.Schema({
   googleId: String,
+  facebookId: String,
   email: String,
   password: String
 });
@@ -45,6 +48,8 @@ userSchema.plugin(findOrCreate);
 const User = new mongoose.model('User', userSchema);
 passport.use(User.createStrategy());
 
+//////////////////////////////////////////////////Serialize & Deserialize///////////////////////////////////////////
+
 passport.serializeUser(function(user, done) {
   done(null, user);
 });
@@ -53,23 +58,41 @@ passport.deserializeUser(function(user, done) {
   done(null, user);
 });
 
+//////////////////////////////////////////////////GOOGLE Configure Strategy////////////////////////////////////////////////
+
 passport.use(new GoogleStrategy({
-    clientID: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: "http://localhost:3000/auth/google/secrets"
   },
   function(accessToken, refreshToken, profile, cb) {
     User.findOrCreate({
       googleId: profile.id
     }, function(err, user) {
+      // console.log(profile);
       return cb(err, user);
     });
   }
 ));
-/////////////////////////////////////////////////////////////ToDo/////////////////////////////////////////////////////////
-app.get("/", function(req, res) {
-  res.render("home")
-});
+
+////////////////////////////////////////////////FACEBOOK Configure Strategy////////////////////////////////////////////////
+
+passport.use(new FacebookStrategy({
+    clientID: process.env.FACEBOOK_APP_ID,
+    clientSecret: process.env.FACEBOOK_APP_SECRET,
+    callbackURL: "http://localhost:3000/auth/facebook/callback"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    User.findOrCreate({
+      facebookId: profile.id
+    }, function(err, user) {
+      // console.log(profile);
+      return cb(err, user);
+    });
+  }
+));
+
+//////////////////////////////////////////////////////////////GOOGLE Authenticate Requests///////////////////////////////////////////////////
 
 app.get('/auth/google',
   passport.authenticate('google', {
@@ -85,6 +108,27 @@ app.get('/auth/google/secrets',
     res.redirect('/secrets');
   });
 
+//////////////////////////////////////////////////////////FACEBOOK Authenticate Requests///////////////////////////////////////////////////
+
+app.get('/auth/facebook',
+  passport.authenticate('facebook', {
+    scope: ['email']
+  }));
+
+app.get('/auth/facebook/callback',
+  passport.authenticate('facebook', {
+    failureRedirect: '/login'
+  }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
+
+/////////////////////////////////////////////////////////////ToDo/////////////////////////////////////////////////////////
+
+app.get("/", function(req, res) {
+  res.render("home")
+});
 
 app.get("/login", function(req, res) {
   res.render("login")
